@@ -52,6 +52,7 @@ var babelOpts = {
   _moduleMap: objectAssign({}, require('fbjs/module-map'), {
     'React': 'react',
     'ReactDOM': 'react-dom',
+    'ReactNative': 'react-native',
     'StaticContainer.react': 'react-static-container'
   })
 };
@@ -61,7 +62,8 @@ var buildDist = function(opts) {
     debug: opts.debug,
     externals: {
       'react': 'React',
-      'react-dom': 'ReactDOM'
+      'react-dom': 'ReactDOM',
+      'react-native': 'ReactNative'
     },
     output: {
       filename: opts.output,

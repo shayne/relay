@@ -17,7 +17,6 @@ var Promise = require('Promise');
 import type RelayMutationRequest from 'RelayMutationRequest';
 import type RelayQueryRequest from 'RelayQueryRequest';
 
-var fetch = require('fetch');
 var fetchWithRetries = require('fetchWithRetries');
 import type {InitWithRetries} from 'fetchWithRetries';
 
