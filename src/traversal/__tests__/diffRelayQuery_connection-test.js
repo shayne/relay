@@ -9,6 +9,8 @@
  * @emails oncall+relay
  */
 
+/* eslint-disable indent */
+
 'use strict';
 
 var RelayTestUtils = require('RelayTestUtils');
@@ -49,7 +51,7 @@ describe('diffRelayQuery', () => {
 
   it('returns unfetched connections as-is', () => {
     var records = {};
-    var store = new RelayRecordStore({records}, {map: rootCallMap});
+    var store = new RelayRecordStore({records}, {rootCallMap});
     var tracker = new RelayQueryTracker();
 
     var query = getNode(Relay.QL`
@@ -72,7 +74,7 @@ describe('diffRelayQuery', () => {
 
   it('removes completely fetched connections', () => {
     var records = {};
-    var store = new RelayRecordStore({records}, {map: rootCallMap});
+    var store = new RelayRecordStore({records}, {rootCallMap});
     var tracker = new RelayQueryTracker();
 
     var payload = {
@@ -113,7 +115,7 @@ describe('diffRelayQuery', () => {
 
   it('returns range extensions for partially fetched connections', () => {
     var records = {};
-    var store = new RelayRecordStore({records}, {map: rootCallMap});
+    var store = new RelayRecordStore({records}, {rootCallMap});
     var tracker = new RelayQueryTracker();
 
     // Write full data for 3 of 5 records, nothing for edges 4-5
@@ -187,7 +189,7 @@ describe('diffRelayQuery', () => {
 
   it('does not fetch missing `edges` data for generated `node` ids', () => {
     var records = {};
-    var store = new RelayRecordStore({records}, {map: rootCallMap});
+    var store = new RelayRecordStore({records}, {rootCallMap});
     var tracker = new RelayQueryTracker();
 
     // Provide empty IDs to simulate non-refetchable nodes
@@ -270,7 +272,7 @@ describe('diffRelayQuery', () => {
 
   it('fetches missing `node` data via a `node()` query', () => {
     var records = {};
-    var store = new RelayRecordStore({records}, {map: rootCallMap});
+    var store = new RelayRecordStore({records}, {rootCallMap});
     var tracker = new RelayQueryTracker();
 
     var payload = {
@@ -394,7 +396,7 @@ describe('diffRelayQuery', () => {
   it('fetches missing `node` data via a `node()` query and missing `edges` ' +
      'data via a `connection.find()` query if connection is findable', () => {
     var records = {};
-    var store = new RelayRecordStore({records}, {map: rootCallMap});
+    var store = new RelayRecordStore({records}, {rootCallMap});
     var tracker = new RelayQueryTracker();
 
     var payload = {
@@ -578,7 +580,7 @@ describe('diffRelayQuery', () => {
   it('fetches missing `node` data via a `node()` query and warns about ' +
      'unfetchable `edges` data if connection is not findable', () => {
     var records = {};
-    var store = new RelayRecordStore({records}, {map: rootCallMap});
+    var store = new RelayRecordStore({records}, {rootCallMap});
     var tracker = new RelayQueryTracker();
 
     var payload = {
@@ -710,7 +712,7 @@ describe('diffRelayQuery', () => {
 
   it('does not flatten fragments when creating new root queries', () => {
     var records = {};
-    var store = new RelayRecordStore({records}, {map: rootCallMap});
+    var store = new RelayRecordStore({records}, {rootCallMap});
     var tracker = new RelayQueryTracker();
 
     var payload = {

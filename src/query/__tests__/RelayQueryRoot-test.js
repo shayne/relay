@@ -45,7 +45,7 @@ describe('RelayQueryRoot', () => {
         }
       }
     `);
-    usernames.__concreteNode__.metadata = {rootArg: 'names'};
+    usernames.__concreteNode__.metadata = {identifyingArgName: 'names'};
   });
 
   it('has a unique ID', () => {
@@ -116,12 +116,10 @@ describe('RelayQueryRoot', () => {
   });
 
   it('returns root calls with values', () => {
-    expect(me.getRootCall()).toEqual(
-      {name: 'me', value: null}
-    );
+    expect(me.getIdentifyingArg()).toEqual(undefined);
 
-    expect(usernames.getRootCall()).toEqual(
-      {name: 'usernames', value: 'mroch'}
+    expect(usernames.getIdentifyingArg()).toEqual(
+      {name: 'names', value: 'mroch'}
     );
 
     expect(getNode(Relay.QL`
@@ -130,8 +128,8 @@ describe('RelayQueryRoot', () => {
           firstName
         }
       }
-    `).getRootCall()).toEqual(
-      {name: 'usernames', value: ['a', 'b', 'c']}
+    `).getIdentifyingArg()).toEqual(
+      {name: 'names', value: ['a', 'b', 'c']}
     );
   });
 
@@ -202,7 +200,7 @@ describe('RelayQueryRoot', () => {
         }
       }
     `);
-    usernames2.__concreteNode__.metadata = {rootArg: 'names'};
+    usernames2.__concreteNode__.metadata = {identifyingArgName: 'names'};
 
     expect(me.equals(me2)).toBe(true);
     expect(usernames.equals(usernames2)).toBe(true);
@@ -290,13 +288,19 @@ describe('RelayQueryRoot', () => {
     expect(getNode(new GraphQL.Query('node')).isScalar()).toBe(false);
   });
 
-  it('returns the call type', () => {
-    var query = getNode(Relay.QL`query{node(id:"123"){id}}`);
-    query.__concreteNode__.metadata = {rootCallType: 'scalar'};
-    expect(query.getCallType()).toBe('scalar');
+  it('returns the identifying argument type', () => {
+    var nodeQuery = getNode(Relay.QL`query{node(id:"123"){id}}`);
+    nodeQuery.__concreteNode__.metadata = {
+      identifyingArgName: 'id',
+      identifyingArgType: 'scalar',
+    };
+    const nodeIdentifyingArg = nodeQuery.getIdentifyingArg();
+    expect(nodeIdentifyingArg).toBeDefined();
+    expect(nodeIdentifyingArg.type).toBe('scalar');
 
     var me = getNode(Relay.QL`query{me{id}}`);
-    expect(me.getCallType()).toBe(undefined);
+    const meIdentifyingArg = me.getIdentifyingArg();
+    expect(meIdentifyingArg).toBeUndefined();
   });
 
   it('creates nodes', () => {
@@ -347,10 +351,10 @@ describe('RelayQueryRoot', () => {
           actor {
             ${defer(fragment1a)},
             ${Relay.QL`
-      fragment on User {
-        ${defer(fragment1b)},
-      }
-    `}
+              fragment on User {
+                ${defer(fragment1b)},
+              }
+            `}
           }
         }
       }
@@ -376,10 +380,7 @@ describe('RelayQueryRoot', () => {
   it('returns directives', () => {
     var query = getNode(Relay.QL`
       query {
-        me
-          @include(if: $cond)
-          @foo(int: 10, bool: true, str: "string")
-        {
+        me @include(if: $cond) {
           id
         }
       }
@@ -390,15 +391,38 @@ describe('RelayQueryRoot', () => {
         arguments: [
           {name: 'if', value: true},
         ],
-      },
-      {
-        name: 'foo',
-        arguments: [
-          {name: 'int', value: 10},
-          {name: 'bool', value: true},
-          {name: 'str', value: 'string'},
-        ],
       }
     ]);
+  });
+
+  describe('getStorageKey()', () => {
+    it('delegates to RelayQueryField::getStorageKey', () => {
+      const query = getNode(Relay.QL`query { settings(environment: MOBILE) }`);
+      // Inherit all of the other RelayQueryField::getStorageKey() behavior,
+      // like stripping out spurious if/unless and connection args.
+      const mockField = {getStorageKey: jest.genMockFunction()};
+      RelayQuery.Field.build = jest.genMockFn().mockReturnValue(mockField);
+      query.getStorageKey();
+      expect(RelayQuery.Field.build).toBeCalled();
+      expect(mockField.getStorageKey).toBeCalled();
+    });
+
+    it('strips identifying arguments', () => {
+      const identifyingQuery = getNode(
+        Relay.QL`query { username(name:"yuzhi") }`
+      );
+      identifyingQuery.__concreteNode__.metadata = {identifyingArgName: 'name'};
+      expect(identifyingQuery.getStorageKey()).toBe('username');
+    });
+
+    /*
+    Come a time when root fields support more than just identifying arguments,
+    write a test to ensure that non-identifying args don't get stripped out.
+
+    it('does not strip out non-identifying arguments', () => {
+      const query = getNode(Relay.QL`query { settings(environment: MOBILE) }`);
+      expect(query.getStorageKey()).toBe('settings.environment(MOBILE)');
+    });
+    */
   });
 });

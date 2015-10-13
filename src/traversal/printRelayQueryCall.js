@@ -19,6 +19,7 @@ import type {
 } from 'RelayInternalTypes';
 
 var flattenArray = require('flattenArray');
+var stableStringify = require('stableStringify');
 
 /**
  * @internal

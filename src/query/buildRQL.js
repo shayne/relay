@@ -15,7 +15,6 @@
 
 var GraphQL = require('GraphQL');
 var Map = require('Map');
-var RelayQL = require('RelayQL');
 import type {RelayConcreteNode} from 'RelayQL';
 import type {RelayContainer, Variables} from 'RelayTypes';
 
@@ -25,7 +24,7 @@ var mapObject = require('mapObject');
 
 export type FragmentBuilder = (variables: Variables) => RelayConcreteNode;
 export type QueryBuilder =
-  (Component?: RelayContainer, params?: Variables) => RelayConcreteNode;
+  (Component: RelayContainer, params: Variables) => RelayConcreteNode;
 
 // Cache results of executing fragment query builders.
 var fragmentCache = new Map();
@@ -68,12 +67,12 @@ var buildRQL = {
     var node = fragmentCache.get(fragmentBuilder);
     if (!node) {
       var variables = toVariables(values);
-      if (isDeprecatedCallWithArgCountGreaterThan(fragmentBuilder, 1)) {
-        // TODO: Delete legacy support, (_, query, variables) => query`...`.
-        node = (fragmentBuilder: any)(undefined, RelayQL, variables);
-      } else {
-        node = fragmentBuilder(variables);
-      }
+      invariant(
+        !isDeprecatedCallWithArgCountGreaterThan(fragmentBuilder, 1),
+        'Relay.QL: Deprecated usage detected. If you are trying to define a ' +
+        'fragment, use `variables => Relay.QL`.'
+      );
+      node = fragmentBuilder(variables);
       fragmentCache.set(fragmentBuilder, node);
     }
     return GraphQL.isFragment(node) ? node : undefined;
@@ -95,29 +94,30 @@ var buildRQL = {
     }
     if (!node) {
       var variables = toVariables(values);
-      if (isDeprecatedCallWithArgCountGreaterThan(queryBuilder, 2)) {
-        // TODO: Delete legacy support, (Component, variables, rql) => rql`...`.
-        node = queryBuilder(Component, variables, RelayQL);
-      } else if (isDeprecatedCallWithArgCountGreaterThan(queryBuilder, 0)) {
+      invariant(
+        !isDeprecatedCallWithArgCountGreaterThan(queryBuilder, 2),
+        'Relay.QL: Deprecated usage detected. If you are trying to define a ' +
+        'query, use `(Component, variables) => Relay.QL`.'
+      );
+      if (isDeprecatedCallWithArgCountGreaterThan(queryBuilder, 0)) {
         node = queryBuilder(Component, variables);
       } else {
-        node = queryBuilder();
+        node = queryBuilder(Component, variables);
         if (GraphQL.isQuery(node) && node.fragments.length === 0) {
-          var rootCall = node.calls[0];
           if (!node.fields.every(field => field.fields.length === 0)) {
             invariant(
               false,
               'Relay.QL: Expected query `%s` to be empty. For example, use ' +
               '`node(id: $id)`, not `node(id: $id) { ... }`.',
-              rootCall.name
+              node.fieldName
             );
           }
           var fragmentValues = filterObject(values, (_, name) =>
             Component.hasVariable(name)
           );
           node = new GraphQL.Query(
-            rootCall.name,
-            rootCall.value,
+            node.fieldName,
+            (node.calls[0] && node.calls[0].value) || null,
             node.fields,
             [Component.getFragment(queryName, fragmentValues)],
             node.metadata,

@@ -187,7 +187,7 @@ var RelayTestUtils = {
     // e.g. `{ref_q0: '<ref_q0>'}`
     var variables = {[name]: '<' + callValue.callVariableName + '>'};
 
-    return RelayQuery.Node.create(
+    return RelayQuery.Root.create(
       new GraphQL.Query(
         'nodes',
         new GraphQL.BatchCallVariable(id, refParam.path),
@@ -386,7 +386,7 @@ var RelayTestUtils = {
         };
         return false;
       }
-      var fragment = RelayQuery.Node.create(
+      var fragment = RelayQuery.Fragment.create(
         new GraphQL.QueryFragment('Test', 'Node', [
           new GraphQL.Field('__test__')
         ]),
@@ -442,17 +442,31 @@ var RelayTestUtils = {
 
   /**
    * Helper to write the result payload of a (root) query into a store,
-   * returning created/updated ID sets.
+   * returning created/updated ID sets. The payload is transformed before
+   * writing; property keys are rewritten from application names into
+   * serialization keys matching the fields in the query.
    */
   writePayload(store, query, payload, tracker, options) {
+    var transformRelayQueryPayload = require('transformRelayQueryPayload');
+
+    return RelayTestUtils.writeVerbatimPayload(
+      store,
+      query,
+      transformRelayQueryPayload(query, payload),
+      tracker,
+      options
+    );
+  },
+
+  /**
+   * Helper to write the result payload into a store. Unlike `writePayload`,
+   * the payload is not transformed first.
+   */
+  writeVerbatimPayload(store, query, payload, tracker, options) {
     var RelayChangeTracker = require('RelayChangeTracker');
     var RelayQueryTracker = require('RelayQueryTracker');
     var RelayQueryWriter = require('RelayQueryWriter');
-    var transformRelayQueryPayload = require('transformRelayQueryPayload');
     var writeRelayQueryPayload = require('writeRelayQueryPayload');
-
-    // rewrite any plain name/alias property names into storage keys
-    payload = transformRelayQueryPayload(query, payload);
 
     tracker = tracker || new RelayQueryTracker();
     options = options || {};

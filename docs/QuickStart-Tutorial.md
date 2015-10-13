@@ -4,7 +4,7 @@ title: Tutorial
 layout: docs
 category: Quick Start
 permalink: docs/tutorial.html
-next: videos
+next: thinking-in-graphql
 ---
 
 In this tutorial, we will build a game using GraphQL mutations. The goal of the game is to find a hidden treasure in a grid of 9 squares. We will give players three tries to find the treasure. This should give us an end-to-end look at Relay – from the GraphQL schema on the server, to the React application on the client.
@@ -253,7 +253,7 @@ npm start
 
 ## Writing the game
 
-Let's tweak the file `./routes/AppHomeRoute.js` to anchor our game to the `game` root field of the schema:
+Let's tweak the file `./js/routes/AppHomeRoute.js` to anchor our game to the `game` root field of the schema:
 
 ```
 export default class extends Relay.Route {
@@ -265,9 +265,11 @@ export default class extends Relay.Route {
 }
 ```
 
-Next, let's create a file in `./mutations/CheckHidingSpotForTreasureMutation.js` and create subclass of `Relay.Mutation` called `CheckHidingSpotForTreasureMutation` to hold our mutation implementation:
+Next, let's create a file in `./js/mutations/CheckHidingSpotForTreasureMutation.js` and create subclass of `Relay.Mutation` called `CheckHidingSpotForTreasureMutation` to hold our mutation implementation:
 
 ```
+import Relay from 'react-relay';
+
 export default class CheckHidingSpotForTreasureMutation extends Relay.Mutation {
   static fragments = {
     game: () => Relay.QL`
@@ -329,7 +331,7 @@ export default class CheckHidingSpotForTreasureMutation extends Relay.Mutation {
 }
 ```
 
-Finally, let's tie it all together in `./components/App.js`:
+Finally, let's tie it all together in `./js/components/App.js`:
 
 ```
 import CheckHidingSpotForTreasureMutation from '../mutations/CheckHidingSpotForTreasureMutation';
@@ -380,6 +382,7 @@ class App extends React.Component {
     return this.props.game.hidingSpots.edges.map(edge => {
       return (
         <div
+          key={edge.node.id}
           onClick={this._handleHidingSpotClick.bind(this, edge.node)}
           style={this._getHidingSpotStyle(edge.node)}
         />

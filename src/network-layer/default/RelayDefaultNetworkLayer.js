@@ -192,10 +192,10 @@ function formatRequestErrors(
           queryLine.substr(column - 1 - offset, CONTEXT_LENGTH),
           ' '.repeat(offset) + '^^^'
         ].map(messageLine => indent + messageLine).join('\n');
-        }).join('\n')) :
+      }).join('\n')) :
       '';
 
-      return prefix + message + locationMessage;
+    return prefix + message + locationMessage;
 
   }).join('\n');
 }

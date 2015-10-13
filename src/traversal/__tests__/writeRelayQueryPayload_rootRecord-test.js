@@ -16,14 +16,21 @@ RelayTestUtils.unmockRelay();
 
 jest
   .dontMock('GraphQLRange')
-  .dontMock('GraphQLSegment');
+  .dontMock('GraphQLSegment')
+  .mock('warning');
 
 var Relay = require('Relay');
 
 describe('writeRelayQueryPayload()', () => {
   var RelayRecordStore;
 
-  var {getNode, getRefNode, writePayload} = RelayTestUtils;
+  var {
+    getNode,
+    getRefNode,
+    getVerbatimNode,
+    writePayload,
+    writeVerbatimPayload
+  } = RelayTestUtils;
 
   beforeEach(() => {
     jest.resetModuleRegistry();
@@ -59,7 +66,7 @@ describe('writeRelayQueryPayload()', () => {
       });
       expect(store.getRecordState('123')).toBe('EXISTENT');
       expect(store.getField('123', 'id')).toBe('123');
-      expect(store.getRootCallID('me', null)).toBe('123');
+      expect(store.getDataID('me')).toBe('123');
     });
 
     it('is created for argument-less custom root calls without an id', () => {
@@ -91,7 +98,7 @@ describe('writeRelayQueryPayload()', () => {
       });
       expect(store.getRecordState('client:viewer')).toBe('EXISTENT');
       expect(store.getLinkedRecordID('client:viewer', 'actor')).toBe('123');
-      expect(store.getRootCallID('viewer', null)).toBe('client:viewer');
+      expect(store.getDataID('viewer')).toBe('client:viewer');
     });
 
     it('is created for custom root calls with an id', () => {
@@ -118,7 +125,7 @@ describe('writeRelayQueryPayload()', () => {
       });
       expect(store.getRecordState('1055790163')).toBe('EXISTENT');
       expect(store.getField('1055790163', 'id')).toBe('1055790163');
-      expect(store.getRootCallID('username', 'yuzhi')).toBe('1055790163');
+      expect(store.getDataID('username', 'yuzhi')).toBe('1055790163');
     });
 
     it('is created for custom root calls without an id', () => {
@@ -149,7 +156,7 @@ describe('writeRelayQueryPayload()', () => {
       });
       expect(store.getRecordState('client:1')).toBe('EXISTENT');
       expect(store.getField('client:1', 'name')).toBe('Yuzhi Zheng');
-      expect(store.getRootCallID('username', 'yuzhi')).toBe('client:1');
+      expect(store.getDataID('username', 'yuzhi')).toBe('client:1');
     });
 
     it('is created for custom root calls with batch call variables', () => {
@@ -196,7 +203,7 @@ describe('writeRelayQueryPayload()', () => {
       expect(() => {
         writePayload(store, query, payload);
       }).toFailInvariant(
-        'RelayRecordStore.getRootCallID(): Argument to `node()` cannot be ' +
+        'RelayRecordStore.getDataID(): Argument to `node()` cannot be ' +
         'null or undefined.'
       );
     });
@@ -503,6 +510,100 @@ describe('writeRelayQueryPayload()', () => {
       });
       expect(store.getRecordState('123')).toBe('EXISTENT');
       expect(store.getField('123', 'name')).toBe(undefined);
+    });
+
+    it('records the concrete type if `__typename` is present', () => {
+      var records = {};
+      var store = new RelayRecordStore({records});
+      var query = getNode(Relay.QL`
+        query {
+          node(id: "123") {
+            id,
+            __typename
+          }
+        }
+      `);
+      var payload = {
+        node: {
+          id: '123',
+          __typename: 'User',
+          foo: 'bar',
+        },
+      };
+      writePayload(store, query, payload);
+      expect(store.getType('123')).toBe('User');
+    });
+
+    it('records the parent field type if `__typename` is not present', () => {
+      var records = {};
+      var store = new RelayRecordStore({records});
+      var query = getVerbatimNode(Relay.QL`
+        query {
+          node(id: "123") {
+            id
+          }
+        }
+      `);
+      var payload = {
+        node: {
+          id: '123',
+        },
+      };
+      writePayload(store, query, payload);
+      // `Node` is the type of the `id` field's parent (`node(...): Node`)
+      expect(store.getType('123')).toBe('Node');
+    });
+
+    it('warns if the typename cannot be determined for a node', () => {
+      var records = {};
+      var store = new RelayRecordStore({records});
+      // No `id` or `__typename` fields
+      var query = getVerbatimNode(Relay.QL`
+        query {
+          node(id: "123") {
+            name
+          }
+        }
+      `);
+      // But the payload contains an `id` so the writer will attempt to store a
+      // `__typename`.
+      var payload = {
+        node: {
+          id: '123',
+          name: 'Joe',
+        },
+      };
+      writeVerbatimPayload(store, query, payload);
+      expect(store.getType('123')).toBe(null);
+      expect([
+        'RelayQueryWriter: Could not find a type name for record `%s`.',
+        '123'
+      ]).toBeWarnedNTimes(1);
+    });
+
+    it('does not store types for client records', () => {
+      var records = {};
+      var store = new RelayRecordStore({records});
+      // No `id` or `__typename` fields
+      var query = getVerbatimNode(Relay.QL`
+        query {
+          viewer {
+            actor {
+              name
+            }
+          }
+        }
+      `);
+      // No `id` value - treated as a client record
+      var payload = {
+        viewer: {
+          actor: {
+            name: 'Joe',
+          },
+        },
+      };
+      writePayload(store, query, payload);
+      expect(store.getType('client:viewer')).toBe(null);
     });
   });
 });

@@ -55,7 +55,6 @@ var EDGES_FIELD = RelayQuery.Field.build(
   null,
   {plural: true}
 );
-var EMPTY = '';
 var ID = 'id';
 var IGNORED_KEYS = {
   error: true,
@@ -193,7 +192,7 @@ function handleMerge(
     }
     // if the field is an argument-less root call, determine the corresponding
     // root record ID
-    var rootID = store.getRootCallID(fieldName, EMPTY);
+    var rootID = store.getDataID(fieldName);
     // check for valid data (has an ID or is an array) and write the field
     if (
       ID in payloadData ||
@@ -231,9 +230,11 @@ function mergeField(
     });
     return;
   }
+  // reassign to preserve type information in below closure
+  var payloadData = payload;
 
   var store = writer.getRecordStore();
-  var recordID = payload[ID];
+  var recordID = payloadData[ID];
   var path;
 
   if (recordID) {
@@ -242,11 +243,11 @@ function mergeField(
         RelayNodeInterface.NODE,
         recordID,
         null,
-        {rootArg: RelayNodeInterface.ID}
+        {identifyingArgName: RelayNodeInterface.ID}
       )
     );
   } else {
-    recordID = store.getRootCallID(fieldName, EMPTY);
+    recordID = store.getDataID(fieldName);
     // Root fields that do not accept arguments
     path = new RelayQueryPath(RelayQuery.Root.build(fieldName));
   }
@@ -268,16 +269,22 @@ function mergeField(
       ) {
         // for flow: types are lost in closures
         if (path && recordID) {
+          var typeName = writer.getRecordTypeName(
+            child,
+            recordID,
+            payloadData
+          );
           // ensure the record exists and then update it
           writer.createRecordIfMissing(
             child,
             recordID,
+            typeName,
             path
           );
           writer.writePayload(
             child,
             recordID,
-            payload,
+            payloadData,
             path
           );
         }
@@ -406,7 +413,8 @@ function addRangeNode(
   path = path.getPath(EDGES_FIELD, edgeID);
 
   // create the edge record
-  writer.createRecordIfMissing(EDGES_FIELD, edgeID, path);
+  var typeName = writer.getRecordTypeName(EDGES_FIELD, edgeID, edgeData);
+  writer.createRecordIfMissing(EDGES_FIELD, edgeID, typeName, path);
 
   // write data for all `edges` fields
   // TODO #7167718: more efficient mutation/subscription writes
@@ -552,7 +560,7 @@ function getIDFromPath(
   // ['viewer']. We try to match it up with something in the root call mapping
   // first.
   if (path.length === 1) {
-    var rootCallID = store.getRootCallID(path[0], EMPTY);
+    var rootCallID = store.getDataID(path[0]);
     if (rootCallID) {
       return rootCallID;
     }

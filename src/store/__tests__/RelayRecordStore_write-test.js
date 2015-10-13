@@ -16,6 +16,7 @@ jest.autoMockOff();
 var GraphQLRange = require('GraphQLRange');
 var RelayConnectionInterface = require('RelayConnectionInterface');
 var RelayMockCacheManager = require('RelayMockCacheManager');
+var RelayRecordStatusMap = require('RelayRecordStatusMap');
 var RelayTestUtils = require('RelayTestUtils');
 var {APPEND, PREPEND, REMOVE} = require('GraphQLMutatorConstants');
 
@@ -34,41 +35,41 @@ describe('RelayRecordStore', () => {
     jest.addMatchers(RelayTestUtils.matchers);
   });
 
-  describe('getRootCallID()', () => {
+  describe('getDataID()', () => {
     it('returns undefined for unknown root call ids', () => {
       var store = new RelayRecordStore({records: {}});
-      expect(store.getRootCallID('username', 'zuck')).toBe(undefined);
+      expect(store.getDataID('username', 'zuck')).toBe(undefined);
     });
     it('returns id for node/nodes root call ids', () => {
       var store = new RelayRecordStore({records: {}});
-      expect(store.getRootCallID('node', '4')).toBe('4');
-      expect(store.getRootCallID('nodes', '4')).toBe('4');
+      expect(store.getDataID('node', '4')).toBe('4');
+      expect(store.getDataID('nodes', '4')).toBe('4');
     });
   });
 
-  describe('putRootCallID()', () => {
+  describe('putDataID()', () => {
     it('sets root call ids', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var store = new RelayRecordStore({records: {}}, null, null, cache);
-      store.putRootCallID('username', 'zuck', 'node:4');
-      expect(store.getRootCallID('username', 'zuck')).toBe('node:4');
-      expect(cache.cacheRootCall).toBeCalledWith('username', 'zuck', 'node:4');
+      store.putDataID('username', 'zuck', 'node:4');
+      expect(store.getDataID('username', 'zuck')).toBe('node:4');
+      expect(cache.writeRootCall).toBeCalledWith('username', 'zuck', 'node:4');
     });
     it('does not set ids for node/nodes root calls', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var rootCallMap = {};
       var store =
-        new RelayRecordStore({records: {}}, {map: rootCallMap}, null, cache);
-      store.putRootCallID('node', '4', 'node:4');
-      store.putRootCallID('nodes', '4', 'node:4');
+        new RelayRecordStore({records: {}}, {rootCallMap}, null, cache);
+      store.putDataID('node', '4', 'node:4');
+      store.putDataID('nodes', '4', 'node:4');
       expect(rootCallMap).toEqual({});
-      expect(cache.cacheRootCall).not.toBeCalled();
+      expect(cache.writeRootCall).not.toBeCalled();
     });
   });
 
   describe('deleteRecord()', () => {
     it('sets records to null', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var records = {
         '1': {
           __dataID__: '1'
@@ -77,10 +78,10 @@ describe('RelayRecordStore', () => {
       var store = new RelayRecordStore({records}, null, null, cache);
       store.deleteRecord('1');
       expect(store.getRecordState('1')).toBe('NONEXISTENT');
-      expect(cache.cacheNode).toBeCalledWith('1', null);
+      expect(cache.writeNode).toBeCalledWith('1', null);
       store.deleteRecord('2');
       expect(store.getRecordState('2')).toBe('NONEXISTENT');
-      expect(cache.cacheNode).toBeCalledWith('2', null);
+      expect(cache.writeNode).toBeCalledWith('2', null);
     });
 
     it('writes to queued data if available, otherwise base data', () => {
@@ -111,12 +112,13 @@ describe('RelayRecordStore', () => {
 
   describe('putRecord()', () => {
     it('creates records', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var records = {};
       var store = new RelayRecordStore({records}, null, null, cache);
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       expect(store.getRecordState('1')).toBe('EXISTENT');
-      expect(cache.cacheField).toBeCalledWith('1', '__dataID__', '1');
+      expect(store.getType('1')).toBe('Type');
+      expect(cache.writeField).toBeCalledWith('1', '__dataID__', '1', 'Type');
     });
 
     it('writes to queued data if available, otherwise base data', () => {
@@ -132,13 +134,15 @@ describe('RelayRecordStore', () => {
         'mutationID',
       );
 
-      recordStore.putRecord('a');
+      recordStore.putRecord('a', 'Type');
       expect(recordStore.getRecordState('a')).toBe('EXISTENT');
       expect(queuedStore.getRecordState('a')).toBe('EXISTENT');
 
-      queuedStore.putRecord('b');
+      queuedStore.putRecord('b', 'Type');
       expect(recordStore.getRecordState('b')).toBe('UNKNOWN');
       expect(queuedStore.getRecordState('b')).toBe('EXISTENT');
+      expect(queuedRecords['b'].__status__)
+        .toBe(RelayRecordStatusMap.setOptimisticStatus(0, true));
     });
   });
 
@@ -154,22 +158,24 @@ describe('RelayRecordStore', () => {
     });
 
     it('writes scalar fields', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var store = new RelayRecordStore({records: {}}, null, null, cache);
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       store.putField('1', 'name', null);
       expect(store.getField('1', 'name')).toBe(null);
-      expect(cache.cacheField).toBeCalledWith('1', 'name', null);
+      expect(cache.writeField).toBeCalledWith('1', 'name', null, 'Type');
       store.putField('1', 'name', undefined);
       expect(store.getField('1', 'name')).toBe(undefined);
-      expect(cache.cacheField).toBeCalledWith('1', 'name', undefined);
+      expect(cache.writeField)
+        .toBeCalledWith('1', 'name', undefined, 'Type');
       store.putField('1', 'name', 'Joe');
       expect(store.getField('1', 'name')).toBe('Joe');
-      expect(cache.cacheField).toBeCalledWith('1', 'name', 'Joe');
+      expect(cache.writeField).toBeCalledWith('1', 'name', 'Joe', 'Type');
       var email = 'joesavona@fb.com';
       store.putField('1', 'email_addresses', [email]);
       expect(store.getField('1', 'email_addresses')).toEqual([email]);
-      expect(cache.cacheField).toBeCalledWith('1', 'email_addresses', [email]);
+      expect(cache.writeField)
+        .toBeCalledWith('1', 'email_addresses', [email], 'Type');
       var phone = {
         is_verified: true,
         phone_number: {
@@ -178,7 +184,8 @@ describe('RelayRecordStore', () => {
       };
       store.putField('1', 'all_phones', [phone]);
       expect(store.getField('1', 'all_phones')).toEqual([phone]);
-      expect(cache.cacheField).toBeCalledWith('1', 'all_phones', [phone]);
+      expect(cache.writeField)
+        .toBeCalledWith('1', 'all_phones', [phone], 'Type');
     });
 
     it('writes to queued data if available, otherwise base data', () => {
@@ -204,6 +211,8 @@ describe('RelayRecordStore', () => {
       queuedStore.putField('b', 'name', 'd');
       expect(recordStore.getField('b', 'name')).toBe(undefined);
       expect(queuedStore.getField('b', 'name')).toBe('d');
+      expect(queuedRecords['b'].__status__)
+        .toBe(RelayRecordStatusMap.setOptimisticStatus(0, true));
     });
   });
 
@@ -219,25 +228,25 @@ describe('RelayRecordStore', () => {
     });
 
     it('deletes fields', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var store = new RelayRecordStore({records: {}}, null, null, cache);
-      store.putRecord('1');
-      store.putRecord('2');
+      store.putRecord('1', 'Type');
+      store.putRecord('2', 'Type');
 
       store.putField('1', 'scalar', 'foo');
       store.deleteField('1', 'scalar');
       expect(store.getField('1', 'scalar')).toBe(null);
-      expect(cache.cacheField).toBeCalledWith('1', 'scalar', null);
+      expect(cache.writeField).toBeCalledWith('1', 'scalar', null);
 
       store.putLinkedRecordID('1', 'singular', '2');
       store.deleteField('1', 'singular');
       expect(store.getField('1', 'singular')).toBe(null);
-      expect(cache.cacheField).toBeCalledWith('1', 'singular', null);
+      expect(cache.writeField).toBeCalledWith('1', 'singular', null);
 
       store.putLinkedRecordIDs('1', 'plural', ['2']);
       store.deleteField('1', 'plural');
       expect(store.getField('1', 'plural')).toBe(null);
-      expect(cache.cacheField).toBeCalledWith('1', 'plural', null);
+      expect(cache.writeField).toBeCalledWith('1', 'plural', null);
     });
 
     it('writes to queued data if available, otherwise base data', () => {
@@ -275,7 +284,7 @@ describe('RelayRecordStore', () => {
   describe('putLinkedRecordID()', () => {
     it('throws if either record does not exist', () => {
       var store = new RelayRecordStore({records: {}});
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       expect(() => {
         store.putLinkedRecordID('2', 'link', '1');
       }).toFailInvariant(
@@ -291,13 +300,13 @@ describe('RelayRecordStore', () => {
     });
 
     it('writes links between records', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var store = new RelayRecordStore({records: {}}, null, null, cache);
-      store.putRecord('viewerID');
-      store.putRecord('actorID');
+      store.putRecord('viewerID', 'Type');
+      store.putRecord('actorID', 'Type');
       store.putLinkedRecordID('viewerID', 'actor', 'actorID');
       expect(store.getLinkedRecordID('viewerID', 'actor')).toBe('actorID');
-      expect(cache.cacheField).toBeCalledWith('viewerID', 'actor', {
+      expect(cache.writeField).toBeCalledWith('viewerID', 'actor', {
         __dataID__: 'actorID',
       });
     });
@@ -315,10 +324,10 @@ describe('RelayRecordStore', () => {
         'mutationID',
       );
 
-      recordStore.putRecord('a');
-      recordStore.putRecord('b');
-      recordStore.putRecord('c');
-      recordStore.putRecord('d');
+      recordStore.putRecord('a', 'Type');
+      recordStore.putRecord('b', 'Type');
+      recordStore.putRecord('c', 'Type');
+      recordStore.putRecord('d', 'Type');
 
       recordStore.putLinkedRecordID('a', 'friend', 'c');
       expect(recordStore.getLinkedRecordID('a', 'friend')).toBe('c');
@@ -333,7 +342,7 @@ describe('RelayRecordStore', () => {
   describe('putLinkedRecordIDs()', () => {
     it('throws if either record does not exist', () => {
       var store = new RelayRecordStore({records: {}});
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       expect(() => {
         store.putLinkedRecordIDs('2', 'link', ['1']);
       }).toFailInvariant(
@@ -349,15 +358,15 @@ describe('RelayRecordStore', () => {
     });
 
     it('writes one-to-n links between records', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var store = new RelayRecordStore({records: {}}, null, null, cache);
-      store.putRecord('storyID');
-      store.putRecord('actor1');
-      store.putRecord('actor2');
+      store.putRecord('storyID', 'Type');
+      store.putRecord('actor1', 'Type');
+      store.putRecord('actor2', 'Type');
       store.putLinkedRecordIDs('storyID', 'actors', ['actor1', 'actor2']);
       expect(store.getLinkedRecordIDs('storyID', 'actors'))
         .toEqual(['actor1', 'actor2']);
-      expect(cache.cacheField).toBeCalledWith('storyID', 'actors', [
+      expect(cache.writeField).toBeCalledWith('storyID', 'actors', [
         {__dataID__: 'actor1'},
         {__dataID__: 'actor2'},
       ]);
@@ -376,10 +385,10 @@ describe('RelayRecordStore', () => {
         'mutationID',
       );
 
-      recordStore.putRecord('a');
-      recordStore.putRecord('b');
-      recordStore.putRecord('c');
-      recordStore.putRecord('d');
+      recordStore.putRecord('a', 'Type');
+      recordStore.putRecord('b', 'Type');
+      recordStore.putRecord('c', 'Type');
+      recordStore.putRecord('d', 'Type');
 
       recordStore.putLinkedRecordIDs('a', 'friends', ['c']);
       expect(recordStore.getLinkedRecordIDs('a', 'friends')).toEqual(['c']);
@@ -403,13 +412,13 @@ describe('RelayRecordStore', () => {
     });
 
     it('creates ranges if not defined', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var records = {};
       var store = new RelayRecordStore({records}, null, null, cache);
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       store.putRange('1', []);
       expect(records['1'].__range__ instanceof GraphQLRange).toBe(true);
-      expect(cache.cacheField).toBeCalledWith(
+      expect(cache.writeField).toBeCalledWith(
         '1',
         '__range__',
         records['1'].__range__
@@ -417,27 +426,27 @@ describe('RelayRecordStore', () => {
     });
 
     it('overwrites ranges if present',  () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var records = {};
       var store = new RelayRecordStore({records}, null, null, cache);
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       store.putRange('1', []);
       var range1 = records['1'].__range__;
       store.putRange('1', []);
       var range2 = records['1'].__range__;
       expect(range2 instanceof GraphQLRange).toBe(true);
       expect(range1).not.toBe(range2);
-      expect(cache.cacheField).toBeCalledWith(
+      expect(cache.writeField).toBeCalledWith(
         '1',
         '__range__',
         range2
       );
-      expect(cache.cacheField).toBeCalledWith(
+      expect(cache.writeField).toBeCalledWith(
         '1',
         '__forceIndex__',
         0
       );
-      expect(cache.cacheField).toBeCalledWith(
+      expect(cache.writeField).toBeCalledWith(
         '1',
         '__filterCalls__',
         []
@@ -445,16 +454,16 @@ describe('RelayRecordStore', () => {
     });
 
     it('sets the force index for the new range', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var records = {};
       var store = new RelayRecordStore({records}, null, null, cache);
       expect(store.getRangeForceIndex('1')).toBe(0); // not in store yet
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       store.putRange('1', []);
       expect(store.getRangeForceIndex('1')).toBe(0);
       store.putRange('1', [], 10);
       expect(store.getRangeForceIndex('1')).toBe(10);
-      expect(cache.cacheField).toBeCalledWith(
+      expect(cache.writeField).toBeCalledWith(
         '1',
         '__forceIndex__',
         10
@@ -464,7 +473,7 @@ describe('RelayRecordStore', () => {
     it('returns a negative force index for deleted ranges', () => {
       var records = {};
       var store = new RelayRecordStore({records});
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       store.putRange('1', []);
       store.deleteRecord('1');
       expect(store.getRecordState('1')).toBe('NONEXISTENT');
@@ -472,7 +481,7 @@ describe('RelayRecordStore', () => {
     });
 
     it('sets the filter calls for a range', () => {
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var records = {};
       var store = new RelayRecordStore({records}, null, null, cache);
       var calls = [
@@ -485,10 +494,10 @@ describe('RelayRecordStore', () => {
           value: '10'
         },
       ];
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       store.putRange('1', calls);
       expect(store.getRangeFilterCalls('1')).toEqual(calls.slice(0, 1));
-      expect(cache.cacheField).toBeCalledWith(
+      expect(cache.writeField).toBeCalledWith(
         '1',
         '__filterCalls__',
         calls.slice(0, 1)
@@ -505,7 +514,7 @@ describe('RelayRecordStore', () => {
         'RelayRecordStore.putRangeEdges(): Expected record `1` to exist and ' +
         'have a range.'
       );
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       expect(() => {
         store.putRangeEdges('1', [], {}, []);
       }).toFailInvariant(
@@ -516,10 +525,10 @@ describe('RelayRecordStore', () => {
 
     it('adds edges to the range', () => {
       var connectionID = '1';
-      var cache = RelayMockCacheManager.genCacheManager();
+      var cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       var records = {};
       var store = new RelayRecordStore({records}, null, null, cache);
-      store.putRecord(connectionID);
+      store.putRecord(connectionID, 'Type');
       store.putRange(connectionID, []);
       var pageInfo = {
         [HAS_NEXT_PAGE]: true,
@@ -531,8 +540,8 @@ describe('RelayRecordStore', () => {
       for (var ii = 0; ii < 3; ii++) {
         var edgeID = 'edge' + ii;
         var nodeID = 'node' + ii;
-        store.putRecord(edgeID);
-        store.putRecord(nodeID);
+        store.putRecord(edgeID, 'Type');
+        store.putRecord(nodeID, 'Type');
         store.putLinkedRecordID(edgeID, 'node', nodeID);
         store.putField(edgeID, 'cursor', 'cursor' + ii);
         edges.push(edgeID);
@@ -558,7 +567,7 @@ describe('RelayRecordStore', () => {
         {edgeID: 'edge1', nodeID: 'node1'},
         {edgeID: 'edge2', nodeID: 'node2'},
       ]);
-      expect(cache.cacheField).toBeCalledWith(
+      expect(cache.writeField).toBeCalledWith(
         connectionID,
         '__range__',
         records[connectionID].__range__
@@ -584,8 +593,8 @@ describe('RelayRecordStore', () => {
       var nodeID = 'node:' + index;
       var cursor = 'cursor:' + index;
 
-      store.putRecord(edgeID);
-      store.putRecord(nodeID);
+      store.putRecord(edgeID, 'Type');
+      store.putRecord(nodeID, 'Type');
       store.putLinkedRecordID(edgeID, 'node', nodeID);
       store.putField(edgeID, 'cursor', cursor);
 
@@ -595,7 +604,7 @@ describe('RelayRecordStore', () => {
     beforeEach(() => {
       records = {};
       queuedRecords = {};
-      cache = RelayMockCacheManager.genCacheManager();
+      cache = RelayMockCacheManager.genCacheManager().getQueryWriter();
       store = new RelayRecordStore({records}, null, null, cache);
       queuedStore = new RelayRecordStore(
         {records, queuedRecords},
@@ -607,7 +616,7 @@ describe('RelayRecordStore', () => {
       connectionID = '123';
 
       // create a range record
-      store.putRecord(connectionID);
+      store.putRecord(connectionID, 'Type');
       store.putRange(connectionID, []);
 
       // ...with a first edge
@@ -637,9 +646,9 @@ describe('RelayRecordStore', () => {
         [lastEdgeID]
       );
 
-      cache.cacheNode.mockClear();
-      cache.cacheField.mockClear();
-      cache.cacheRootCall.mockClear();
+      cache.writeNode.mockClear();
+      cache.writeField.mockClear();
+      cache.writeRootCall.mockClear();
     });
 
     it('throws if the connection does not exist', () => {
@@ -664,7 +673,7 @@ describe('RelayRecordStore', () => {
         firstEdgeID
       ]);
       expect(store.getConnectionIDsForRecord(nodeID)).toEqual([connectionID]);
-      expect(cache.cacheField).toBeCalledWith(
+      expect(cache.writeField).toBeCalledWith(
         connectionID,
         '__range__',
         records[connectionID].__range__
@@ -683,7 +692,7 @@ describe('RelayRecordStore', () => {
         firstEdgeID
       ]);
       // cache not updated on optimistic range update
-      expect(cache.cacheField).not.toBeCalledWith(
+      expect(cache.writeField).not.toBeCalledWith(
         connectionID,
         '__range__',
         records[connectionID].__range__
@@ -709,7 +718,7 @@ describe('RelayRecordStore', () => {
         edgeID
       ]);
       expect(store.getConnectionIDsForRecord(nodeID)).toEqual([connectionID]);
-      expect(cache.cacheField).toBeCalledWith(
+      expect(cache.writeField).toBeCalledWith(
         connectionID,
         '__range__',
         records[connectionID].__range__
@@ -728,7 +737,7 @@ describe('RelayRecordStore', () => {
         edgeID
       ]);
       // cache not updated on optimistic range update
-      expect(cache.cacheField).not.toBeCalledWith(
+      expect(cache.writeField).not.toBeCalledWith(
         connectionID,
         '__range__',
         records[connectionID].__range__
@@ -753,7 +762,7 @@ describe('RelayRecordStore', () => {
       var rangeInfo = store.getRangeMetadata(connectionID, calls);
       expect(rangeInfo.requestedEdges).toEqual([]);
       expect(store.getConnectionIDsForRecord(firstNodeID)).toEqual(null);
-      expect(cache.cacheField).toBeCalledWith(
+      expect(cache.writeField).toBeCalledWith(
         connectionID,
         '__range__',
         records[connectionID].__range__
@@ -768,7 +777,7 @@ describe('RelayRecordStore', () => {
       var rangeInfo = queuedStore.getRangeMetadata(connectionID, calls);
       expect(rangeInfo.requestedEdges).toEqual([]);
       // cache not updated on optimistic range update
-      expect(cache.cacheField).not.toBeCalledWith(
+      expect(cache.writeField).not.toBeCalledWith(
         connectionID,
         '__range__',
         records[connectionID].__range__

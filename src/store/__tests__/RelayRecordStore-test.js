@@ -19,10 +19,10 @@ jest.mock('warning');
 var GraphQLRange = require('GraphQLRange');
 var Relay = require('Relay');
 var RelayQueryPath = require('RelayQueryPath');
+var RelayRecordStatusMap = require('RelayRecordStatusMap');
 
 describe('RelayRecordStore', () => {
   var RelayRecordStore;
-
 
   var {getNode} = RelayTestUtils;
 
@@ -167,7 +167,7 @@ describe('RelayRecordStore', () => {
       var queuedRecords = {
         '1': {
           __dataID__: '1',
-          __hasError__: true,
+          __status__: RelayRecordStatusMap.setErrorStatus(0, true),
         },
       };
       var store = new RelayRecordStore({queuedRecords});
@@ -178,7 +178,7 @@ describe('RelayRecordStore', () => {
       var queuedRecords = {
         '1': {
           __dataID__: '1',
-          __hasError__: false,
+          __status__: 0,
         },
       };
       var store = new RelayRecordStore({queuedRecords});
@@ -276,7 +276,7 @@ describe('RelayRecordStore', () => {
         query.getFieldByStorageKey('actor').getFieldByStorageKey('address'),
         addressID
       );
-      store.putRecord(addressID, path);
+      store.putRecord(addressID, 'Type', path);
       expect(store.getPathToRecord(addressID)).toMatchPath(path);
     });
   });
@@ -710,7 +710,7 @@ describe('RelayRecordStore', () => {
     it('returns undefined if the connection is unfetched', () => {
       var records = {};
       var store = new RelayRecordStore({records});
-      store.putRecord('1');
+      store.putRecord('1', 'Type');
       expect(store.getConnectionIDsForField('1', 'news_feed')).toBe(undefined);
     });
 
@@ -735,7 +735,7 @@ describe('RelayRecordStore', () => {
     it('returns undefined if unfetched and not cached', () => {
       var records = {};
       var store = new RelayRecordStore({records});
-      expect(store.getRootCallID('viewer', null)).toBe(undefined);
+      expect(store.getDataID('viewer')).toBe(undefined);
     });
 
     it('returns cached id if unfetched', () => {
@@ -748,7 +748,7 @@ describe('RelayRecordStore', () => {
         {records},
         {rootCallMap, cachedRootCallMap}
       );
-      expect(store.getRootCallID('viewer', null)).toBe(id);
+      expect(store.getDataID('viewer')).toBe(id);
     });
 
     it('returns fetched id over cached id', () => {
@@ -762,7 +762,7 @@ describe('RelayRecordStore', () => {
         {records},
         {rootCallMap, cachedRootCallMap}
       );
-      expect(store.getRootCallID('viewer', null)).toBe(id);
+      expect(store.getDataID('viewer')).toBe(id);
     });
   });
 

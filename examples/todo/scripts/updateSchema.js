@@ -1,22 +1,25 @@
 #!/usr/bin/env babel-node --optional es7.asyncFunctions
 /**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
+ * This file provided by Facebook is for non-commercial testing and evaluation
+ * purposes only.  Facebook reserves all rights not expressly granted.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * FACEBOOK BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 import fs from 'fs';
 import path from 'path';
-import { GraphQLTodoSchema } from '../data/schema';
+import { schema } from '../data/schema';
 import { graphql } from 'graphql';
 import { introspectionQuery, printSchema } from 'graphql/utilities';
 
 // Save JSON of full schema introspection for Babel Relay Plugin to use
 async () => {
-  var result = await (graphql(GraphQLTodoSchema, introspectionQuery));
+  var result = await (graphql(schema, introspectionQuery));
   if (result.errors) {
     console.error(
       'ERROR introspecting schema: ',
@@ -33,5 +36,5 @@ async () => {
 // Save user readable type system shorthand of schema
 fs.writeFileSync(
   path.join(__dirname, '../data/schema.graphql'),
-  printSchema(GraphQLTodoSchema)
+  printSchema(schema)
 );

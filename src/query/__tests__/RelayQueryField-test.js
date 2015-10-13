@@ -408,6 +408,18 @@ describe('RelayQueryField', () => {
         getNode(pictureVariableRQL, variables).getChildren()[0];
       expect(pictureVariable.getStorageKey()).toBe(key);
     });
+
+    it('produces stable keys regardless of argument order', () => {
+      var pictureFieldA = getNode(Relay.QL`fragment on User {
+        profilePicture(size: "32", preset: SMALL)
+      }`).getChildren()[0];
+      var pictureFieldB = getNode(Relay.QL`fragment on User {
+        profilePicture(preset: SMALL, size: "32")
+      }`).getChildren()[0];
+      const expectedKey = 'profilePicture.preset(SMALL).size(32)';
+      expect(pictureFieldA.getStorageKey()).toBe(expectedKey);
+      expect(pictureFieldB.getStorageKey()).toBe(expectedKey);
+    });
   });
 
   it('returns arguments with values', () => {
@@ -458,8 +470,8 @@ describe('RelayQueryField', () => {
         }
       }
     `, variables);
-    expect(usernamesQuery.getRootCall()).toEqual(
-      {name: 'usernames', value: ['a', 'b', 'c']}
+    expect(usernamesQuery.getIdentifyingArg()).toEqual(
+      {name: 'names', value: ['a', 'b', 'c']}
     );
   });
 
@@ -563,7 +575,7 @@ describe('RelayQueryField', () => {
   it('returns directives', () => {
     var field = getNode(Relay.QL`
       fragment on Story {
-        feedback @include(if: $cond) @foo(int: 10, bool: true, str: "string")
+        feedback @include(if: $cond)
       }
     `, {cond: true}).getChildren()[0];
     expect(field.getDirectives()).toEqual([
@@ -573,14 +585,6 @@ describe('RelayQueryField', () => {
           {name: 'if', value: true},
         ],
       },
-      {
-        name: 'foo',
-        arguments: [
-          {name: 'int', value: 10},
-          {name: 'bool', value: true},
-          {name: 'str', value: 'string'},
-        ],
-      }
     ]);
   });
 });

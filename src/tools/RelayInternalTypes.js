@@ -20,10 +20,13 @@
  */
 
 import typeof GraphQLMutatorConstants from 'GraphQLMutatorConstants';
+import type GraphQLRange from 'GraphQLRange';
 import type RelayQuery from 'RelayQuery';
+import type RelayQueryPath from 'RelayQueryPath';
 
 export type Call = {
   name: string;
+  type?: string;
   value: CallValue;
 };
 export type CallValue = mixed;
@@ -46,6 +49,32 @@ export type MutationVariables = {
 export type PrintedQuery = {
   text: string;
   variables: {[key: string]: mixed};
+};
+
+export type Record = {
+  [key: string]: mixed;
+  __dataID__: string;
+  __filterCalls__?: Array<Call>;
+  __forceIndex__?: number;
+  __mutationIDs__?: Array<ClientMutationID>;
+  __range__?: GraphQLRange;
+  __path__?: RelayQueryPath;
+  __status__?: number;
+  __typename?: ?string;
+};
+
+export type Records = {[key: DataID]: ?Record};
+
+// Maps root calls to a single data ID through an indentifying arg (or EMPTY)
+// eg. username(name: "joe")   => '123'
+//     username(name: "steve") => '456'
+//     viewer                  => '456'
+type IdentifyingArgsMap = {[identifyingArgName: string]: DataID};
+export type RootCallMap = {[storageKey: string]: IdentifyingArgsMap};
+
+// maps node IDs to the IDs of the connections that contain them
+export type NodeRangeMap = {
+  [dataID: DataID]: {[connectionID: DataID]: boolean}
 };
 
 export type RelayQuerySet = {[queryName: string]: ?RelayQuery.Root};

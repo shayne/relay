@@ -43,6 +43,18 @@ describe('inferRelayFieldsFromData', function() {
     });
   });
 
+  it('generates metadata for `id` fields', () => {
+    var query = inferRelayFieldsFromData({
+      id: '123',
+    });
+    expect(query).toEqualFields(Relay.QL`
+      fragment on Actor {
+        id,
+      }
+    `);
+    expect(query[0].getParentType()).toBe('Node');
+  });
+
   it('infers scalar fields from scalars', () => {
     expect(inferRelayFieldsFromData({
       id: '123',
@@ -196,7 +208,7 @@ describe('inferRelayFieldsFromData', function() {
     expect(inferRelayFieldsFromData({
       __dataID__: '123',
       __range__: null,
-      __status__: null,
+      __status__: 0,
       id: '123',
       name: 'Alice',
     })).toEqualFields(Relay.QL`  fragment on Node {

@@ -128,17 +128,17 @@ describe('RelayQueryFragment', () => {
     var node = Relay.QL`fragment on Node{id}`;
     var route = RelayMetaRoute.get('Foo');
     var variables = {};
-    var fragment = RelayQuery.Node.create(node, route, variables);
+    var fragment = RelayQuery.Fragment.create(node, route, variables);
     var fragmentID = generateRQLFieldAlias('_RelayQueryFragment0.Foo.{}');
     expect(fragment.getFragmentID()).toBe(fragmentID);
 
     route = RelayMetaRoute.get('Bar');
-    fragment = RelayQuery.Node.create(node, route, variables);
+    fragment = RelayQuery.Fragment.create(node, route, variables);
     fragmentID = generateRQLFieldAlias('_RelayQueryFragment0.Bar.{}');
     expect(fragment.getFragmentID()).toBe(fragmentID);
 
     variables = {foo: 'bar'};
-    fragment = RelayQuery.Node.create(node, route, variables);
+    fragment = RelayQuery.Fragment.create(node, route, variables);
     fragmentID = generateRQLFieldAlias('_RelayQueryFragment0.Bar.{foo:"bar"}');
     expect(fragment.getFragmentID()).toBe(fragmentID);
   });
@@ -147,8 +147,11 @@ describe('RelayQueryFragment', () => {
     var node = Relay.QL`fragment on Node{id}`;
     var route = RelayMetaRoute.get('Foo');
     var variables = {};
-    var fragment1 = RelayQuery.Node.create(node, route, variables);
-    var fragment2 = RelayQuery.Node.create(node, route, variables);
+
+    // Explicitly using `new` operator here in order to get a non-memoized
+    // fragment (`RelayQuery.Fragment.create` memoizes).
+    var fragment1 = new RelayQuery.Fragment(node, route, variables);
+    var fragment2 = new RelayQuery.Fragment(node, route, variables);
     var fragmentID = generateRQLFieldAlias('_RelayQueryFragment0.Foo.{}');
 
     expect(fragment1).not.toBe(fragment2);
@@ -231,7 +234,6 @@ describe('RelayQueryFragment', () => {
     var fragment = getNode(Relay.QL`
       fragment on Story
         @include(if: $cond)
-        @foo(int: 10, bool: true, str: "string")
       {
         feedback
       }
@@ -241,14 +243,6 @@ describe('RelayQueryFragment', () => {
         name: 'include',
         arguments: [
           {name: 'if', value: true},
-        ],
-      },
-      {
-        name: 'foo',
-        arguments: [
-          {name: 'int', value: 10},
-          {name: 'bool', value: true},
-          {name: 'str', value: 'string'},
         ],
       }
     ]);

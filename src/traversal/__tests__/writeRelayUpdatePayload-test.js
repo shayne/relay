@@ -63,7 +63,7 @@ describe('writePayload()', () => {
         {records, queuedRecords},
         rootCallMaps,
         nodeConnectionMap,
-        undefined /* cacheManager */,
+        undefined, /* cacheManager */
         'mutationID'
       );
 
@@ -284,7 +284,7 @@ describe('writePayload()', () => {
         {records, queuedRecords},
         rootCallMaps,
         nodeConnectionMap,
-        undefined /* cacheManager */,
+        undefined, /* cacheManager */
         'mutationID'
       );
 
@@ -530,7 +530,7 @@ describe('writePayload()', () => {
         {records, queuedRecords},
         rootCallMaps,
         {},
-        undefined /* cacheManager */,
+        undefined, /* cacheManager */
         'mutationID'
       );
 
@@ -695,7 +695,7 @@ describe('writePayload()', () => {
         {records, queuedRecords},
         rootCallMaps,
         nodeConnectionMap,
-        undefined /* cacheManager */,
+        undefined, /* cacheManager */
         'mutationID'
       );
 
@@ -1039,6 +1039,7 @@ describe('writePayload()', () => {
       expect(store.getField(nextEdgeID, 'cursor')).toBe(nextCursor);
       expect(store.getLinkedRecordID(nextEdgeID, 'node')).toBe(nextNodeID);
       expect(store.getField(nextNodeID, 'id')).toBe(nextNodeID);
+      expect(store.getType(nextNodeID)).toBe('Comment');
       expect(store.getLinkedRecordID(nextNodeID, 'body')).toBe(bodyID);
       expect(store.getField(bodyID, 'text')).toBe(input.message.text);
       expect(store.getRangeMetadata(

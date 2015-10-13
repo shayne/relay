@@ -4,9 +4,9 @@ var x = Relay.QL`
   query {
     node(id: 123) {
       ... on User {
-        gender
-      }
-    }
+        gender,
+      },
+    },
   }
 `;
 
@@ -29,6 +29,6 @@ var x = (function () {
     generated: true,
     requisite: true
   })])], {
-    rootArg: 'id'
+    identifyingArgName: 'id'
   }, 'FieldForEnum');
 })();

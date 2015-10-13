@@ -97,9 +97,6 @@ class RelayQueryNode {
   __hasValidatedConnectionCalls__: ?boolean;
   __route__: RelayMetaRoute;
   __serializationKey__: ?string;
-  /* $FlowFixMe(>=0.16.0) - This comment suppresses an error on the following
-   * line that was uncovered when Flow 0.16 was deployed.
-   */
   __storageKey__: ?string;
   __variables__: Variables;
 
@@ -117,42 +114,6 @@ class RelayQueryNode {
       'RelayQueryNode.create(): Expected a node.'
     );
     return node;
-  }
-
-  static createFragment(
-    concreteNode: ConcreteQueryObject,
-    route: RelayMetaRoute,
-    variables: Variables,
-    metadata?: ?FragmentMetadata
-  ): RelayQueryFragment {
-    invariant(
-      GraphQL.isFragment(concreteNode),
-      'RelayQuery.createQuery(): Expected a concrete query fragment, got: %s',
-      concreteNode
-    );
-    return createMemoizedFragment(
-      concreteNode,
-      route,
-      variables,
-      metadata || DEFAULT_FRAGMENT_METADATA
-    );
-  }
-
-  static createQuery(
-    concreteNode: ConcreteQueryObject,
-    route: RelayMetaRoute,
-    variables: Variables
-  ): RelayQueryRoot {
-    invariant(
-      GraphQL.isQuery(concreteNode),
-      'RelayQuery.createQuery(): Expected a concrete query, got: %s',
-      concreteNode
-    );
-    return new RelayQueryRoot(
-      concreteNode,
-      route,
-      variables
-    );
   }
 
   /**
@@ -360,22 +321,24 @@ class RelayQueryRoot extends RelayQueryNode {
   __batchCall__: ?BatchCall;
   __deferredFragmentNames__: ?FragmentNames;
   __id__: ?string;
+  __identifyingArg__: ?Call;
+  __storageKey__: ?string;
 
   /**
    * Helper to construct a new root query with the given attributes and 'empty'
    * route/variables.
    */
   static build(
-    rootCall: string,
-    rootCallValue?: ?Array<RootCallValue> | ?RootCallValue,
+    fieldName: string,
+    identifyingArgValue?: ?Array<RootCallValue> | ?RootCallValue,
     children?: ?Array<RelayQueryNode>,
     metadata?: ?{[key: string]: mixed},
     name?: ?string
   ): RelayQueryRoot {
     var nextChildren = children ? children.filter(child => !!child) : [];
     var concreteRoot = new GraphQL.Query(
-      rootCall,
-      rootCallValue || null,
+      fieldName,
+      identifyingArgValue || null,
       null,
       null,
       metadata,
@@ -390,6 +353,23 @@ class RelayQueryRoot extends RelayQueryNode {
     return root;
   }
 
+  static create(
+    concreteNode: ConcreteQueryObject,
+    route: RelayMetaRoute,
+    variables: Variables
+  ): RelayQueryRoot {
+    invariant(
+      GraphQL.isQuery(concreteNode),
+      'RelayQueryRoot.create(): Expected a concrete query, got: %s',
+      concreteNode
+    );
+    return new RelayQueryRoot(
+      concreteNode,
+      route,
+      variables
+    );
+  }
+
   constructor(
     concreteNode: ConcreteQueryObject,
     route: RelayMetaRoute,
@@ -399,6 +379,8 @@ class RelayQueryRoot extends RelayQueryNode {
     this.__batchCall__ = undefined;
     this.__deferredFragmentNames__ = undefined;
     this.__id__ = undefined;
+    this.__identifyingArg__ = undefined;
+    this.__storageKey__ = undefined;
 
     // Ensure IDs are generated in the order that queries are created
     this.getID();
@@ -426,8 +408,8 @@ class RelayQueryRoot extends RelayQueryNode {
     var batchCall = this.__batchCall__;
     if (batchCall === undefined) {
       var concreteCalls = this.__concreteNode__.calls;
-      var callArg = concreteCalls[0].value;
-      if (GraphQL.isBatchCallVariable(callArg)) {
+      var callArg = concreteCalls[0] && concreteCalls[0].value;
+      if (callArg != null && GraphQL.isBatchCallVariable(callArg)) {
         batchCall = {
           refParamName: REF_PARAM_PREFIX + callArg.sourceQueryID,
           sourceQueryID: callArg.sourceQueryID,
@@ -441,24 +423,55 @@ class RelayQueryRoot extends RelayQueryNode {
     return batchCall;
   }
 
-  getRootCall(): Call {
+  getCallsWithValues(): Array<Call> {
     var calls = this.__calls__;
     if (!calls) {
       var concreteCalls = this.__concreteNode__.calls;
       calls = callsFromGraphQL(concreteCalls, this.__variables__);
       this.__calls__ = calls;
     }
-    return calls[0];
+    return calls;
   }
 
-  getCallType(): ?string {
-    if (this.__concreteNode__.calls.length > 0) {
-      return this.__concreteNode__.metadata.rootCallType;
+  getFieldName(): string {
+    return this.__concreteNode__.fieldName;
+  }
+
+  getIdentifyingArg(): ?Call {
+    let identifyingArg = this.__identifyingArg__;
+    if (!identifyingArg) {
+      const metadata = this.__concreteNode__.metadata;
+      const identifyingArgName = metadata.identifyingArgName;
+      if (identifyingArgName != null) {
+        identifyingArg =
+          this.getCallsWithValues().find(c => c.name === identifyingArgName);
+        if (identifyingArg && metadata.identifyingArgType != null) {
+          identifyingArg.type = metadata.identifyingArgType;
+        }
+        this.__identifyingArg__ = identifyingArg;
+      }
     }
+    return identifyingArg;
   }
 
-  getRootCallArgument(): ?string {
-    return this.__concreteNode__.metadata.rootArg;
+  getStorageKey(): string {
+    let storageKey = this.__storageKey__;
+    if (!storageKey) {
+      let args = this.getCallsWithValues();
+      const identifyingArg = this.getIdentifyingArg();
+      if (identifyingArg) {
+        args = args.filter(arg => arg !== identifyingArg);
+      }
+      const field = RelayQueryField.build(
+        this.getFieldName(),
+        args,
+        null,
+        this.__concreteNode__.metadata
+      );
+      storageKey = field.getStorageKey();
+      this.__storageKey__ = storageKey;
+    }
+    return storageKey;
   }
 
   hasDeferredDescendant(): boolean {
@@ -486,13 +499,13 @@ class RelayQueryRoot extends RelayQueryNode {
     if (!(that instanceof RelayQueryRoot)) {
       return false;
     }
-    if (!areEqual(this.getRootCall(), that.getRootCall())) {
-      return false;
-    }
     if (!areEqual(this.getBatchCall(), that.getBatchCall())) {
       return false;
     }
-    if (this.getRootCallArgument() !== that.getRootCallArgument()) {
+    if (
+      this.getFieldName() !== that.getFieldName() ||
+      !areEqual(this.getCallsWithValues(), that.getCallsWithValues())
+    ) {
       return false;
     }
     return super.equals(that);
@@ -622,6 +635,24 @@ class RelayQueryMutation extends RelayQueryOperation {
  * Represents a GraphQL subscription.
  */
 class RelayQuerySubscription extends RelayQueryOperation {
+  static create(
+    concreteNode: ConcreteQueryObject,
+    route: RelayMetaRoute,
+    variables: Variables
+  ): RelayQuerySubscription {
+    invariant(
+      GraphQL.isSubscription(concreteNode),
+      'RelayQuerySubscription.create(): ' +
+      'Expected a concrete subscription, got: %s',
+      concreteNode
+    );
+    return new RelayQuerySubscription(
+      concreteNode,
+      route,
+      variables
+    );
+  }
+
   getPublishedPayloadType(): string {
     return this.getResponseType();
   }
@@ -686,6 +717,26 @@ class RelayQueryFragment extends RelayQueryNode {
     );
     fragment.__children__ = nextChildren;
     return fragment;
+  }
+
+  static create(
+    concreteNode: ConcreteQueryObject,
+    route: RelayMetaRoute,
+    variables: Variables,
+    metadata?: ?FragmentMetadata
+  ): RelayQueryFragment {
+    invariant(
+      GraphQL.isFragment(concreteNode),
+      'RelayQueryFragment.create(): ' +
+      'Expected a concrete query fragment, got: %s',
+      concreteNode
+    );
+    return createMemoizedFragment(
+      concreteNode,
+      route,
+      variables,
+      metadata || DEFAULT_FRAGMENT_METADATA
+    );
   }
 
   constructor(
@@ -922,13 +973,13 @@ class RelayQueryField extends RelayQueryNode {
    * `'news_feed.orderby(TOP_STORIES)'`
    */
   getStorageKey(): string {
-    var storageKey = this.__storageKey__;
+    let storageKey = this.__storageKey__;
     if (!storageKey) {
-      var isConnection = this.isConnection();
-      storageKey = this.getSchemaName();
-      var calls = this.getCallsWithValues();
-      for (var ii = 0; ii < calls.length; ii++) {
-        var call = calls[ii];
+      const isConnection = this.isConnection();
+      const argsToPrint = [];
+      const calls = this.getCallsWithValues();
+      for (let i = 0; i < calls.length; i++) {
+        const call = calls[i];
         if (isConnection && RelayConnectionInterface.isConnectionCall(call)) {
           continue;
         } else if (
@@ -939,13 +990,14 @@ class RelayQueryField extends RelayQueryNode {
           // equivalent fields.
           continue;
         }
-        /* $FlowFixMe(>=0.16.0) - This comment suppresses an error on the
-         * following line that was uncovered when Flow 0.16 was deployed.
-         */
-        storageKey += printRelayQueryCall(call);
+        argsToPrint.push(call);
       }
+      storageKey =
+        this.getSchemaName() +
+        argsToPrint.map(printRelayQueryCall).sort().join('');
       this.__storageKey__ = storageKey;
     }
+    // $FlowIssue #8688673 - The for loop above triggers a flow error
     return storageKey;
   }
 

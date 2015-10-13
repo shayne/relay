@@ -4,6 +4,11 @@ type Root {
   media(id: Int): Media
   viewer: Viewer
   search(query: [SearchInput!]): [SearchResult]
+  _invalid: InvalidType
+}
+
+type InvalidType {
+  node(id: Int): Node
 }
 
 type SearchResult {
@@ -17,6 +22,8 @@ input SearchInput {
 type Mutation {
   actorSubscribe(input: ActorSubscribeInput): ActorSubscribeResponsePayload
   actorSubscribeSubscribe(input: ActorSubscribeInput!): ActorSubscribeResponsePayload
+  mutationMissingArg: FakeResponsePayload
+  mutationWrongArgs(foo: String): FakeResponsePayload
 }
 
 input ActorSubscribeInput {
@@ -27,6 +34,10 @@ input ActorSubscribeInput {
 type ActorSubscribeResponsePayload {
   clientMutationId: String
   actor: User
+}
+
+type FakeResponsePayload {
+  clientMutationId: String
 }
 
 type ActorSubscribeSubscription {
@@ -64,11 +75,9 @@ type NewsFeedConnectionEdge {
 }
 
 type Story implements Node {
-  friends(first: Int, last: Int, orderby: [String], find: String, isViewerFriend: Boolean, gender: Gender, before: String, after: String): UserConnection
+  actors: [User]
+  attachments: [Node]
   id: String
-  name: String
-  profilePicture(size: Int): ProfilePicture
-  websites: [String]
 }
 
 type PendingPostsConnection {
@@ -100,11 +109,7 @@ type UserConnectionEdge {
 }
 
 interface Node {
-  friends(first: Int, last: Int, orderby: [String], find: String, isViewerFriend: Boolean, gender: Gender, before: String, after: String): UserConnection
   id: String
-  name: String
-  profilePicture(size: Int): ProfilePicture
-  websites: [String]
 }
 
 type User implements Node {
@@ -129,11 +134,7 @@ type FakeEdge {
 }
 
 type FakeNode implements Node {
-  friends(first: Int, last: Int, orderby: [String], find: String, isViewerFriend: Boolean, gender: Gender, before: String, after: String): UserConnection
   id: String
-  name: String
-  profilePicture(size: Int): ProfilePicture
-  websites: [String]
 }
 
 type ProfilePicture {

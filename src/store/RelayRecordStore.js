@@ -23,11 +23,17 @@ import type {
   Call,
   ClientMutationID,
   DataID,
-  FieldValue
+  FieldValue,
+  NodeRangeMap,
+  Record,
+  Records,
+  RootCallMap
 } from 'RelayInternalTypes';
 var RelayNodeInterface = require('RelayNodeInterface');
 import type RelayQueryPath from 'RelayQueryPath';
 import type {RecordState} from 'RelayRecordState';
+var RelayRecordStatusMap = require('RelayRecordStatusMap');
+import type {CacheWriter} from 'RelayTypes';
 
 var forEachObject = require('forEachObject');
 var invariant = require('invariant');
@@ -41,21 +47,6 @@ var RANGE = '__range__';
 var PATH = '__path__';
 var {APPEND, PREPEND, REMOVE} = GraphQLMutatorConstants;
 
-export type CacheManager = {
-  cacheNode: (dataID: DataID, record: ?Record) => void;
-  cacheField: (dataID: DataID, field: string, value: ?FieldValue) => void;
-  cacheRootCall: (
-    rootCallName: string,
-    rootCallValue: string,
-    dataID: DataID
-  ) => void;
-  readAllData: (
-    cachedRecords: Records,
-    rootCallData: RootCallMap,
-    callback: Function
-  ) => void;
-};
-export type NodeRangeMap = {[key:string]: {[key:string]: boolean}};
 type EdgeData = {
   __dataID__: DataID;
   cursor: mixed;
@@ -75,30 +66,6 @@ export type RangeInfo = {
   requestedEdges: Array<RangeEdge>;
 };
 type RangeOperation = 'append' | 'prepend' | 'remove';
-export type Record = {
-  [key: string]: mixed;
-  __dataID__: string;
-  __filterCalls__?: Array<Call>;
-  __forceIndex__?: number;
-  __hasError__?: boolean;
-  __mutationIDs__?: Array<ClientMutationID>;
-  __range__?: GraphQLRange;
-  __path__?: RelayQueryPath;
-
-  /**
-   * $FlowIssue: the catch-all "mixed" type above should allow us to set
-   * "append", "prepend" etc as keys in _applyOptimisticRangeUpdate, but it does
-   * not.
-   */
-  prepend?: mixed;
-  append?: mixed;
-  remove?: mixed;
-};
-export type Records = {[key: DataID]: ?Record};
-
-// maps root call args to IDs. ex `username(joe)` -> 123`
-type RootCallArgsMap = {[rootCallValue: string]: DataID};
-export type RootCallMap = {[rootCallName: string]: RootCallArgsMap};
 
 type RecordCollection = {
   cachedRecords?: Records;
@@ -121,7 +88,7 @@ type RootCallMapCollection = {
  * TODO: #6584253 Mediate access to node/cached/queued data via RelayRecordStore
  */
 class RelayRecordStore {
-  _cacheManager: ?CacheManager;
+  _cacheWriter: ?CacheWriter;
   _cachedRecords: ?Records;
   _cachedRootCallMap: RootCallMap;
   _clientMutationID: ?ClientMutationID;
@@ -135,10 +102,10 @@ class RelayRecordStore {
     records: RecordCollection,
     rootCallMaps?: ?RootCallMapCollection,
     nodeConnectionMap?: ?NodeRangeMap,
-    cacheManager?: ?CacheManager,
+    cacheWriter?: ?CacheWriter,
     clientMutationID?: ?ClientMutationID
   ) {
-    this._cacheManager = cacheManager;
+    this._cacheWriter = cacheWriter;
     this._cachedRecords = records.cachedRecords;
     this._cachedRootCallMap =
       (rootCallMaps && rootCallMaps.cachedRootCallMap) || {};
@@ -160,56 +127,58 @@ class RelayRecordStore {
   }
 
   /**
-   * Get the data ID associated with this root call/value pair.
+   * Get the data ID associated with a storage key (and optionally an
+   * identifying argument value) for a root query.
    */
-  getRootCallID(
-    rootCall: string,
-    rootCallArg: ?string
+  getDataID(
+    storageKey: string,
+    identifyingArgValue: ?string
   ): ?DataID {
-    if (RelayNodeInterface.isNodeRootCall(rootCall)) {
+    if (RelayNodeInterface.isNodeRootCall(storageKey)) {
       invariant(
-        rootCallArg != null,
-        'RelayRecordStore.getRootCallID(): Argument to `%s()` cannot be null ' +
-        'or undefined.',
-        rootCall
+        identifyingArgValue != null,
+        'RelayRecordStore.getDataID(): Argument to `%s()` ' +
+        'cannot be null or undefined.',
+        storageKey
       );
-      return rootCallArg;
+      return identifyingArgValue;
     }
-    if (rootCallArg == null) {
-      rootCallArg = EMPTY;
+    if (identifyingArgValue == null) {
+      identifyingArgValue = EMPTY;
     }
-    if (this._rootCallMap.hasOwnProperty(rootCall) &&
-        this._rootCallMap[rootCall].hasOwnProperty(rootCallArg)) {
-      return this._rootCallMap[rootCall][rootCallArg];
-    } else if (this._cachedRootCallMap.hasOwnProperty(rootCall)) {
-      return this._cachedRootCallMap[rootCall][rootCallArg];
+    if (this._rootCallMap.hasOwnProperty(storageKey) &&
+        this._rootCallMap[storageKey].hasOwnProperty(identifyingArgValue)) {
+      return this._rootCallMap[storageKey][identifyingArgValue];
+    } else if (this._cachedRootCallMap.hasOwnProperty(storageKey)) {
+      return this._cachedRootCallMap[storageKey][identifyingArgValue];
     }
   }
 
   /**
-   * Associate a data ID with the given root call/value pair.
+   * Associate a data ID with a storage key (and optionally an identifying
+   * argument value) for a root query.
    */
-  putRootCallID(
-    rootCall: string,
-    rootCallArg: ?string,
+  putDataID(
+    storageKey: string,
+    identifyingArgValue: ?string,
     dataID: DataID
   ): void {
-    if (RelayNodeInterface.isNodeRootCall(rootCall)) {
+    if (RelayNodeInterface.isNodeRootCall(storageKey)) {
       invariant(
-        rootCallArg != null,
-        'RelayRecordStore.putRootCallID(): Argument to `%s()` cannot be null ' +
-        'or undefined.',
-        rootCall
+        identifyingArgValue != null,
+        'RelayRecordStore.putDataID(): Argument to `%s()` ' +
+        'cannot be null or undefined.',
+        storageKey
       );
       return;
     }
-    if (rootCallArg == null) {
-      rootCallArg = EMPTY;
+    if (identifyingArgValue == null) {
+      identifyingArgValue = EMPTY;
     }
-    this._rootCallMap[rootCall] = this._rootCallMap[rootCall] || {};
-    this._rootCallMap[rootCall][rootCallArg] = dataID;
-    if (this._cacheManager) {
-      this._cacheManager.cacheRootCall(rootCall, rootCallArg, dataID);
+    this._rootCallMap[storageKey] = this._rootCallMap[storageKey] || {};
+    this._rootCallMap[storageKey][identifyingArgValue] = dataID;
+    if (this._cacheWriter) {
+      this._cacheWriter.writeRootCall(storageKey, identifyingArgValue, dataID);
     }
   }
 
@@ -231,6 +200,7 @@ class RelayRecordStore {
    */
   putRecord(
     dataID: DataID,
+    typeName: ?string,
     path?: RelayQueryPath
   ): void {
     var target = this._queuedRecords || this._records;
@@ -243,6 +213,7 @@ class RelayRecordStore {
     }
     var nextRecord: Record = ({
       __dataID__: dataID,
+      __typename: typeName,
     }: $FixMe);
     if (target === this._queuedRecords) {
       this._setClientMutationID(nextRecord);
@@ -257,12 +228,12 @@ class RelayRecordStore {
       nextRecord[PATH] = path;
     }
     target[dataID] = nextRecord;
-    var cacheManager = this._cacheManager;
-    if (!this._queuedRecords && cacheManager) {
-      cacheManager.cacheField(dataID, '__dataID__', dataID);
+    var cacheWriter = this._cacheWriter;
+    if (!this._queuedRecords && cacheWriter) {
+      cacheWriter.writeField(dataID, '__dataID__', dataID, typeName);
       var cachedPath = nextRecord[PATH];
       if (cachedPath) {
-        cacheManager.cacheField(dataID, '__path__', cachedPath);
+        cacheWriter.writeField(dataID, '__path__', cachedPath, typeName);
       }
     }
   }
@@ -313,7 +284,9 @@ class RelayRecordStore {
   hasMutationError(dataID: DataID): boolean {
     if (this._queuedRecords) {
       var record = this._queuedRecords[dataID];
-      return !!(record && record.__hasError__);
+      return !!(
+        record && RelayRecordStatusMap.isErrorStatus(record.__status__)
+      );
     }
     return false;
   }
@@ -334,7 +307,10 @@ class RelayRecordStore {
       'exist before settings its mutation error status.',
       dataID
     );
-    record.__hasError__ = hasError;
+    record.__status__ = RelayRecordStatusMap.setErrorStatus(
+      record.__status__,
+      hasError
+    );
   }
 
   /**
@@ -349,10 +325,15 @@ class RelayRecordStore {
     // Remove any links for this record
     if (!this._queuedRecords) {
       delete this._nodeConnectionMap[dataID];
-      if (this._cacheManager) {
-        this._cacheManager.cacheNode(dataID, null);
+      if (this._cacheWriter) {
+        this._cacheWriter.writeNode(dataID, null);
       }
     }
+  }
+
+  getType(dataID: DataID): ?string {
+    // `__typename` property is typed as `string`
+    return (this._getField(dataID, '__typename'): any);
   }
 
   /**
@@ -382,8 +363,9 @@ class RelayRecordStore {
       storageKey
     );
     record[storageKey] = value;
-    if (!this._queuedRecords && this._cacheManager) {
-      this._cacheManager.cacheField(dataID, storageKey, value);
+    if (!this._queuedRecords && this._cacheWriter) {
+      var typeName = record.__typename;
+      this._cacheWriter.writeField(dataID, storageKey, value, typeName);
     }
   }
 
@@ -403,8 +385,8 @@ class RelayRecordStore {
       storageKey
     );
     record[storageKey] = null;
-    if (!this._queuedRecords && this._cacheManager) {
-      this._cacheManager.cacheField(dataID, storageKey, null);
+    if (!this._queuedRecords && this._cacheWriter) {
+      this._cacheWriter.writeField(dataID, storageKey, null);
     }
   }
 
@@ -460,8 +442,8 @@ class RelayRecordStore {
       __dataID__: recordID,
     };
     parent[storageKey] = fieldValue;
-    if (!this._queuedRecords && this._cacheManager) {
-      this._cacheManager.cacheField(parentID, storageKey, fieldValue);
+    if (!this._queuedRecords && this._cacheWriter) {
+      this._cacheWriter.writeField(parentID, storageKey, fieldValue);
     }
   }
 
@@ -526,8 +508,8 @@ class RelayRecordStore {
       };
     });
     parent[storageKey] = records;
-    if (!this._queuedRecords && this._cacheManager) {
-      this._cacheManager.cacheField(parentID, storageKey, records);
+    if (!this._queuedRecords && this._cacheWriter) {
+      this._cacheWriter.writeField(parentID, storageKey, records);
     }
   }
 
@@ -695,11 +677,11 @@ class RelayRecordStore {
     record.__forceIndex__ = forceIndex;
     record.__range__ = range;
 
-    var cacheManager = this._cacheManager;
-    if (!this._queuedRecords && cacheManager) {
-      cacheManager.cacheField(connectionID, FILTER_CALLS, filterCalls);
-      cacheManager.cacheField(connectionID, FORCE_INDEX, forceIndex);
-      cacheManager.cacheField(connectionID, RANGE, range);
+    var cacheWriter = this._cacheWriter;
+    if (!this._queuedRecords && cacheWriter) {
+      cacheWriter.writeField(connectionID, FILTER_CALLS, filterCalls);
+      cacheWriter.writeField(connectionID, FORCE_INDEX, forceIndex);
+      cacheWriter.writeField(connectionID, RANGE, range);
     }
   }
 
@@ -737,8 +719,8 @@ class RelayRecordStore {
       edgesData,
       pageInfo
     );
-    if (!this._queuedRecords && this._cacheManager) {
-      this._cacheManager.cacheField(connectionID, RANGE, range);
+    if (!this._queuedRecords && this._cacheWriter) {
+      this._cacheWriter.writeField(connectionID, RANGE, range);
     }
   }
 
@@ -802,9 +784,11 @@ class RelayRecordStore {
       operation,
       connectionID
     );
-    var record = this._queuedRecords[connectionID];
+    var record: ?Record = this._queuedRecords[connectionID];
     if (!record) {
-      record = {__dataID__: connectionID};
+      // $FlowIssue: this fails with:
+      // "property `append/prepend/remove` not found in object literal"
+      record = ({__dataID__: connectionID}: $FlowIssue);
       this._queuedRecords[connectionID] = record;
     }
     this._setClientMutationID(record);
@@ -855,8 +839,8 @@ class RelayRecordStore {
         range.prependEdge(this._getRangeEdgeData(edgeID));
       }
     }
-    if (this._cacheManager) {
-      this._cacheManager.cacheField(connectionID, RANGE, range);
+    if (this._cacheWriter) {
+      this._cacheWriter.writeField(connectionID, RANGE, range);
     }
   }
 
@@ -963,6 +947,10 @@ class RelayRecordStore {
       mutationIDs.push(clientMutationID);
       record.__mutationIDs__ = mutationIDs;
     }
+    record.__status__ = RelayRecordStatusMap.setOptimisticStatus(
+      0,
+      true
+    );
   }
 }
 

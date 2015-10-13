@@ -5,6 +5,8 @@
  * This source code is licensed under the BSD-style license found in the
  * LICENSE file in the root directory of this source tree. An additional grant
  * of patent rights can be found in the PATENTS file in the same directory.
+ *
+ * @fullSyntaxTransform
  */
 
 'use strict';
@@ -15,24 +17,26 @@ var path = require('path');
 var transformGraphQL = require('./transformGraphQL');
 var readFixtures = require('./readFixtures');
 
-var FIXTURE_PATH = path.join(__dirname, '__fixtures__');
-var SCHEMA_PATH = path.resolve(__dirname, '__tests__', './testschema.rfc.json');
+var SRC_DIR = path.dirname(__dirname);
 
-function writeFile(basename, text) {
+var FIXTURE_PATH = path.join(SRC_DIR, '__fixtures__');
+var SCHEMA_PATH = path.join(SRC_DIR, '__tests__', './testschema.rfc.json');
+
+function writeFixture(basename, text) {
   fs.writeFileSync(path.join(FIXTURE_PATH, basename), text, 'utf8');
 }
 
 var transform = transformGraphQL.bind(null, SCHEMA_PATH);
 
 function genFixtures() {
-  var fixtures = readFixtures();
+  var fixtures = readFixtures(FIXTURE_PATH);
   Object.keys(fixtures).forEach(function (filename) {
     var fixture = fixtures[filename];
     if (fixture.output !== undefined) {
       // fixture for valid input, update the expected output
       try {
         var graphql = transform(fixture.input, filename);
-        writeFile(
+        writeFixture(
           filename,
           [
             'Input:',

@@ -2,9 +2,9 @@ Input:
 var Relay = require('react-relay');
 var x = Relay.QL`
   query {
-    node(id: 123) @source(uri: "facebook.com") {
-      ... on User @include(if: $foo) {
-        name @skip(if: $bar) @meta(data: $data, length: 50)
+    node(id: 123) @include(if: $foo) {
+      ... on User @include(if: $bar) {
+        name @skip(if: $baz)
       }
     }
   }
@@ -28,16 +28,7 @@ var x = (function () {
     name: 'skip',
     arguments: [{
       name: 'if',
-      value: new GraphQL.CallVariable('bar')
-    }]
-  }, {
-    name: 'meta',
-    arguments: [{
-      name: 'data',
-      value: new GraphQL.CallVariable('data')
-    }, {
-      name: 'length',
-      value: new GraphQL.CallValue(50)
+      value: new GraphQL.CallVariable('baz')
     }]
   }]), new GraphQL.Field('id', null, null, null, null, null, {
     parentType: 'User',
@@ -47,15 +38,15 @@ var x = (function () {
     name: 'include',
     arguments: [{
       name: 'if',
-      value: new GraphQL.CallVariable('foo')
+      value: new GraphQL.CallVariable('bar')
     }]
   }])], {
-    rootArg: 'id'
+    identifyingArgName: 'id'
   }, 'QueryWithDirectives', [{
-    name: 'source',
+    name: 'include',
     arguments: [{
-      name: 'uri',
-      value: new GraphQL.CallValue('facebook.com')
+      name: 'if',
+      value: new GraphQL.CallVariable('foo')
     }]
   }]);
 })();
